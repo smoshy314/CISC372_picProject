@@ -3,6 +3,7 @@
 #include <time.h>
 #include <string.h>
 #include "image.h"
+#include <pthread.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -10,6 +11,14 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
+int thread_count;
+pthread_mutex_t mutex;
+struct ptrs {
+    long row ;
+    Image* srcImage;
+    Image* destImage;
+    double algorithm[3][3];
+};
 //An array of kernel matrices to be used for image convolution.  
 //The indexes of these match the enumeration from the header file. ie. algorithms[BLUR] returns the kernel corresponding to a box blur.
 Matrix algorithms[]={
@@ -51,21 +60,49 @@ uint8_t getPixelValue(Image* srcImage,int x,int y,int bit,Matrix algorithm){
     return result;
 }
 
+void* pthread_convolute_loop(void* data){ 
+        int pix,bit,span;
+	struct ptrs* args = (struct ptrs*)data;
+	long row = args->row;
+	Image* srcImage = args->srcImage;
+	Image* destImage = args->destImage;
+        double algorithm[3][3];
+	memcpy(algorithm, args->algorithm, sizeof(double) * 3 * 3);
+	span=srcImage->bpp*srcImage->bpp;
+	for (pix=0;pix<srcImage->width;pix++){
+            for (bit=0;bit<srcImage->bpp;bit++){
+		pthread_mutex_lock(&mutex);
+                destImage->data[Index(pix,row,srcImage->width,bit,srcImage->bpp)]=getPixelValue(srcImage,pix,row,bit,algorithm);
+            	pthread_mutex_unlock(&mutex);
+	    }
+        }
+	return NULL;
+}
 //convolute:  Applies a kernel matrix to an image
 //Parameters: srcImage: The image being convoluted
 //            destImage: A pointer to a  pre-allocated (including space for the pixel array) structure to receive the convoluted image.  It should be the same size as srcImage
 //            algorithm: The kernel matrix to use for the convolution
 //Returns: Nothing
 void convolute(Image* srcImage,Image* destImage,Matrix algorithm){
-    int row,pix,bit,span;
-    span=srcImage->bpp*srcImage->bpp;
+    long thread;
+    pthread_t* thread_handles;
+    
+    long row;
+
+    pthread_mutexattr_t attr;
+    pthread_mutex_init(&mutex,&attr);
+    thread_count = srcImage->height;
+    thread_handles = (pthread_t*)malloc(thread_count*sizeof(pthread_t));    
     for (row=0;row<srcImage->height;row++){
-        for (pix=0;pix<srcImage->width;pix++){
-            for (bit=0;bit<srcImage->bpp;bit++){
-                destImage->data[Index(pix,row,srcImage->width,bit,srcImage->bpp)]=getPixelValue(srcImage,pix,row,bit,algorithm);
-            }
-        }
+	struct ptrs data;
+	data.row = row;
+	data.srcImage = srcImage;
+	data.destImage = destImage;
+	memcpy(data.algorithm, algorithm, sizeof(double) * 3 * 3);	
+	pthread_create(&thread_handles[row], NULL, &pthread_convolute_loop, (void*)&data);
+	
     }
+    pthread_mutex_destroy(&mutex);
 }
 
 //Usage: Prints usage information for the program
