@@ -1,0 +1,9 @@
+Script started on Mon Oct 30 17:12:02 2023
+]0;zenitram@r1n00.darwin:~/CISC372_picProject[?1034h[zenitram@r1n00 CISC372_picProject]$ srum n image pic1.jpg egde
+Took 12 seconds
+]0;zenitram@r1n00.darwin:~/CISC372_picProject[zenitram@r1n00 CISC372_picProject]$ srun image2 pic1.jpg edge
+Took 6 seconds
+]0;zenitram@r1n00.darwin:~/CISC372_picProject[zenitram@r1n00 CISC372_picProject]$ exit ex   
+exit
+
+Script done on Mon Oct 30 17:12:55 2023
