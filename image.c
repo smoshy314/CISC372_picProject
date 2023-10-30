@@ -85,22 +85,20 @@ void convolute(Image* srcImage,Image* destImage,Matrix algorithm){
     long row;
     thread_count = srcImage->height;
     thread_handles = (pthread_t*)malloc(thread_count*sizeof(pthread_t));    
-    struct ptrs** args_array = (struct ptrs**)malloc(thread_count * sizeof(struct ptrs*));
 
+    struct ptrs* args = (struct ptrs*)malloc(sizeof(struct ptrs));
     for (row = 0; row < srcImage->height; row++) {
-        args_array[row] = (struct ptrs*)malloc(sizeof(struct ptrs));
-        args_array[row]->srcImage = srcImage;
-        args_array[row]->destImage = destImage;
-        args_array[row]->row = row;
-        pthread_create(&thread_handles[row], NULL, &pthread_convolute_loop, (void*)args_array[row]);
+        args->srcImage = srcImage;
+        args->destImage = destImage;
+        args->row = row;
+        pthread_create(&thread_handles[row], NULL, &pthread_convolute_loop, (void*)args);
     }
 
-    for (row = 0; row < srcImage->height; row++) {
+    for (row = 0; row == 0; row++) {
         pthread_join(thread_handles[row], NULL);
-        free(args_array[row]);
+        free(args);
     }
     free(thread_handles);
-    free(args_array);
 }
 
 //Usage: Prints usage information for the program
