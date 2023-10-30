@@ -13,9 +13,11 @@
 
 int thread_count;
 enum KernelTypes type;
-Image* p_srcImage;
-Image* p_destImage;
-pthread_mutex_t mutex;
+struct ptrs {
+    long row;
+    Image* srcImage;
+    Image* destImage;
+};
 //An array of kernel matrices to be used for image convolution.  
 //The indexes of these match the enumeration from the header file. ie. algorithms[BLUR] returns the kernel corresponding to a box blur.
 Matrix algorithms[]={
@@ -59,13 +61,14 @@ uint8_t getPixelValue(Image* srcImage,int x,int y,int bit,Matrix algorithm){
 
 void* pthread_convolute_loop(void* arg){ 
         int pix,bit,span;
-	long row = (long)arg;
-	span=p_srcImage->bpp*p_srcImage->bpp;
-	for (pix=0;pix<p_srcImage->width;pix++){
-            for (bit=0;bit<p_srcImage->bpp;bit++){
-		pthread_mutex_lock(&mutex);
-                p_destImage->data[Index(pix,row,p_srcImage->width,bit,p_srcImage->bpp)]=getPixelValue(p_srcImage,pix,row,bit,algorithms[type]);
-            	pthread_mutex_unlock(&mutex);
+	struct ptrs* args = (struct ptrs*)arg;
+	long row = args->row;
+	Image* srcImage = args->srcImage;
+	Image* destImage = args->destImage;
+	span=srcImage->bpp*srcImage->bpp;
+	for (pix=0;pix<srcImage->width;pix++){
+            for (bit=0;bit<srcImage->bpp;bit++){
+               destImage->data[Index(pix,row,srcImage->width,bit,srcImage->bpp)]=getPixelValue(srcImage,pix,row,bit,algorithms[type]);
 	    }
         }
 	return NULL;
@@ -80,15 +83,24 @@ void convolute(Image* srcImage,Image* destImage,Matrix algorithm){
     pthread_t* thread_handles;
     
     long row;
-
-    pthread_mutexattr_t attr;
-    pthread_mutex_init(&mutex,&attr);
     thread_count = srcImage->height;
     thread_handles = (pthread_t*)malloc(thread_count*sizeof(pthread_t));    
-    for (row=0;row<srcImage->height;row++){
-	pthread_create(&thread_handles[row], NULL, &pthread_convolute_loop, (void*)row);	
+    struct ptrs** args_array = (struct ptrs**)malloc(thread_count * sizeof(struct ptrs*));
+
+    for (row = 0; row < srcImage->height; row++) {
+        args_array[row] = (struct ptrs*)malloc(sizeof(struct ptrs));
+        args_array[row]->srcImage = srcImage;
+        args_array[row]->destImage = destImage;
+        args_array[row]->row = row;
+        pthread_create(&thread_handles[row], NULL, &pthread_convolute_loop, (void*)args_array[row]);
     }
-    pthread_mutex_destroy(&mutex);
+
+    for (row = 0; row < srcImage->height; row++) {
+        pthread_join(thread_handles[row], NULL);
+        free(args_array[row]);
+    }
+    free(thread_handles);
+    free(args_array);
 }
 
 //Usage: Prints usage information for the program
@@ -134,12 +146,9 @@ int main(int argc,char** argv){
     destImage.height=srcImage.height;
     destImage.width=srcImage.width;
     destImage.data=malloc(sizeof(uint8_t)*destImage.width*destImage.bpp*destImage.height);
-    p_srcImage = &srcImage;
-    p_destImage = &destImage;
     convolute(&srcImage,&destImage,algorithms[type]);
     stbi_write_png("output.png",destImage.width,destImage.height,destImage.bpp,destImage.data,destImage.bpp*destImage.width);
     stbi_image_free(srcImage.data);
-    
     free(destImage.data);
     t2=time(NULL);
     printf("Took %ld seconds\n",t2-t1);
