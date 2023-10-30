@@ -12,13 +12,10 @@
 #include "stb_image_write.h"
 
 int thread_count;
+enum KernelTypes type;
+Image* p_srcImage;
+Image* p_destImage;
 pthread_mutex_t mutex;
-struct ptrs {
-    long row ;
-    Image* srcImage;
-    Image* destImage;
-    double algorithm[3][3];
-};
 //An array of kernel matrices to be used for image convolution.  
 //The indexes of these match the enumeration from the header file. ie. algorithms[BLUR] returns the kernel corresponding to a box blur.
 Matrix algorithms[]={
@@ -60,19 +57,14 @@ uint8_t getPixelValue(Image* srcImage,int x,int y,int bit,Matrix algorithm){
     return result;
 }
 
-void* pthread_convolute_loop(void* data){ 
+void* pthread_convolute_loop(void* arg){ 
         int pix,bit,span;
-	struct ptrs* args = (struct ptrs*)data;
-	long row = args->row;
-	Image* srcImage = args->srcImage;
-	Image* destImage = args->destImage;
-        double algorithm[3][3];
-	memcpy(algorithm, args->algorithm, sizeof(double) * 3 * 3);
-	span=srcImage->bpp*srcImage->bpp;
-	for (pix=0;pix<srcImage->width;pix++){
-            for (bit=0;bit<srcImage->bpp;bit++){
+	long row = (long)arg;
+	span=p_srcImage->bpp*p_srcImage->bpp;
+	for (pix=0;pix<p_srcImage->width;pix++){
+            for (bit=0;bit<p_srcImage->bpp;bit++){
 		pthread_mutex_lock(&mutex);
-                destImage->data[Index(pix,row,srcImage->width,bit,srcImage->bpp)]=getPixelValue(srcImage,pix,row,bit,algorithm);
+                p_destImage->data[Index(pix,row,p_srcImage->width,bit,p_srcImage->bpp)]=getPixelValue(p_srcImage,pix,row,bit,algorithms[type]);
             	pthread_mutex_unlock(&mutex);
 	    }
         }
@@ -94,13 +86,7 @@ void convolute(Image* srcImage,Image* destImage,Matrix algorithm){
     thread_count = srcImage->height;
     thread_handles = (pthread_t*)malloc(thread_count*sizeof(pthread_t));    
     for (row=0;row<srcImage->height;row++){
-	struct ptrs data;
-	data.row = row;
-	data.srcImage = srcImage;
-	data.destImage = destImage;
-	memcpy(data.algorithm, algorithm, sizeof(double) * 3 * 3);	
-	pthread_create(&thread_handles[row], NULL, &pthread_convolute_loop, (void*)&data);
-	
+	pthread_create(&thread_handles[row], NULL, &pthread_convolute_loop, (void*)row);	
     }
     pthread_mutex_destroy(&mutex);
 }
@@ -136,7 +122,7 @@ int main(int argc,char** argv){
     if (!strcmp(argv[1],"pic4.jpg")&&!strcmp(argv[2],"gauss")){
         printf("You have applied a gaussian filter to Gauss which has caused a tear in the time-space continum.\n");
     }
-    enum KernelTypes type=GetKernelType(argv[2]);
+    type=GetKernelType(argv[2]);
 
     Image srcImage,destImage,bwImage;   
     srcImage.data=stbi_load(fileName,&srcImage.width,&srcImage.height,&srcImage.bpp,0);
@@ -148,6 +134,8 @@ int main(int argc,char** argv){
     destImage.height=srcImage.height;
     destImage.width=srcImage.width;
     destImage.data=malloc(sizeof(uint8_t)*destImage.width*destImage.bpp*destImage.height);
+    p_srcImage = &srcImage;
+    p_destImage = &destImage;
     convolute(&srcImage,&destImage,algorithms[type]);
     stbi_write_png("output.png",destImage.width,destImage.height,destImage.bpp,destImage.data,destImage.bpp*destImage.width);
     stbi_image_free(srcImage.data);
