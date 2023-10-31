@@ -97,7 +97,7 @@ void convolute(Image* srcImage,Image* destImage,Matrix algorithm){
     }
 
     for (row = 0; row < srcImage->height; row++) {
-        pthread_join(thread_handles[row], NULL);
+        //pthread_join(thread_handles[row], NULL);
         free(args_array[row]);
     }
     free(thread_handles);
